@@ -6,6 +6,7 @@ from tensorflow_addons import image
 from tensorflow_addons.image import translate
 import random
 import glob
+import cv2  # REFACTOR: added for RGB image loading (BCI/MIST-HER2 PNG/JPEG support)
 
 from matplotlib import pyplot as plt
 
@@ -90,11 +91,15 @@ class ImageTransformationBatchLoader(BatchLoader):
             except:
                 print(self.config.convert_inp_path_from_target(path))
         else:
-            # image = np.transpose(np.load(path.replace('target', 'input')).astype(np.float32)[start:end, :, :], axes=[1, 2, 0])
-            image = np.transpose(
-                np.load(self.config.convert_inp_path_from_target(path)).astype(np.float32)[:, :, start:end],
-                axes=[1, 2, 0])
-            label = np.transpose(np.load(path).astype(np.float32), axes=[1, 2, 0]) #/ 255.0
+            # REFACTOR: was np.load() for .npy files; replaced with cv2 RGB loading for BCI/MIST-HER2.
+            # cv2 reads BGR by default so cvtColor converts to RGB.
+            # Dividing by 255.0 maps uint8 [0,255] to float32 [0,1].
+            # image takes channels [start:end] (default 0:2 = R+G) to match num_slices=2.
+            # The B channel from H&E is discarded — minimal approach to avoid architecture changes.
+            inp_path = self.config.convert_inp_path_from_target(path)
+            inp_raw = cv2.cvtColor(cv2.imread(inp_path), cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+            image = inp_raw[:, :, start:end]
+            label = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
         if self.config.data_inpnorm == 'norm_by_specified_value':
             normalize_vector = [1500, 1500, 1500, 1000]
@@ -255,8 +260,12 @@ class ImageTransformationBatchLoader_Testing(BatchLoader):
             image = loadmat(self.config.convert_inp_path_from_target(path))['input'].astype(np.float32)[:, :, start:end]
             label = loadmat(path)['target'].astype(np.float32) / 255
         else:
-            image = np.transpose(np.load(self.config.convert_inp_path_from_target(path)).astype(np.float32)[start:end, :, :], axes=[1, 2, 0])
-            label = np.transpose(np.load(path).astype(np.float32), axes=[1, 2, 0]) / 255.0
+            # REFACTOR: was np.load() for .npy files; replaced with cv2 RGB loading for BCI/MIST-HER2.
+            # See ImageTransformationBatchLoader for full explanation of this approach.
+            inp_path = self.config.convert_inp_path_from_target(path)
+            inp_raw = cv2.cvtColor(cv2.imread(inp_path), cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+            image = inp_raw[:, :, start:end]
+            label = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
         if self.config.data_inpnorm == 'norm_by_specified_value':
             normalize_vector = [1500, 1500, 1500, 1000]

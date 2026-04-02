@@ -1,25 +1,31 @@
 import json
+import os  # REFACTOR: added for os.path.join in copy_code()
 import numpy as np
 import tensorflow as tf
 import shutil, glob, sys
 
 
 def copy_code(model_path):
-    tf.io.gfile.mkdir(model_path + 'code')
+    # REFACTOR: was model_path + 'code' — silently wrong if model_path lacks trailing slash
+    code_dir = os.path.join(model_path, 'code')
+    tf.io.gfile.mkdir(code_dir)
     file_names = glob.glob('*.py')
     for file_name in file_names:
         try:
-            shutil.copy(file_name, model_path + 'code')
+            # REFACTOR: was model_path + 'code'
+            shutil.copy(file_name, code_dir)
         except:
             print("Failed to copy file: ", sys.exc_info())
 
     try:
-        shutil.copytree('models/', model_path + 'code/models/')
+        # REFACTOR: was model_path + 'code/models/'
+        shutil.copytree('models/', os.path.join(model_path, 'code', 'models'))
     except:
         print('Skipped copying code in models/ because the source dir does not exist or the target dir already exists.')
 
     try:
-        shutil.copytree('helper_scripts/', model_path + 'code/helper_scripts/')
+        # REFACTOR: was model_path + 'code/helper_scripts/'
+        shutil.copytree('helper_scripts/', os.path.join(model_path, 'code', 'helper_scripts'))
     except:
         print('Skipped copying code in helper_scripts/ because the source dir does not exist or the target dir already exists.')
 

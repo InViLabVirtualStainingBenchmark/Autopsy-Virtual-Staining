@@ -1,9 +1,33 @@
 import os
+import argparse  # REFACTOR: added to replace hardcoded paths and CUDA device
 
 import ops
 
+
+# REFACTOR: parse_args() added — was no argparse; all paths were hardcoded Windows drives
+def parse_args():
+    parser = argparse.ArgumentParser(description='Run inference with trained RegiStain Generator')
+    parser.add_argument('--data_dir', required=True,
+                        help='Directory containing target images, e.g. /data/BCI/testB/')
+    parser.add_argument('--checkpoint', required=True,
+                        help='Path to .h5 Generator checkpoint, e.g. model_G_iter=87700.h5')
+    parser.add_argument('--output_dir', required=True,
+                        help='Directory where output PNGs will be saved')
+    parser.add_argument('--gpu', default='0',
+                        help='CUDA_VISIBLE_DEVICES value (default: 0)')
+    parser.add_argument('--image_size', type=int, default=256,
+                        help='Spatial size of input images in pixels (default: 256; original autopsy slides used 2048)')
+    parser.add_argument('--is_mat', action='store_true',
+                        help='Use .mat autofluorescence loading instead of RGB image loading')
+    return parser.parse_args()
+
+
+args = parse_args()
+
+# REFACTOR: was hardcoded os.environ["CUDA_VISIBLE_DEVICES"] = "0" at module level;
+# moved after parse_args() so --gpu arg is applied before TensorFlow reads the env var
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
 import glob
 from configobj import ConfigObj
@@ -18,23 +42,37 @@ from batch_utils import ImageTransformationBatchLoader_Testing
 
 def init_parameters():
     tc, vc = ConfigObj(), ConfigObj()
-    tc.image_path = 'L:\\Regstain_Code\\code\\stage2_20220727_G&RSeperateTrain_initIter=0\\code_for_public\\Network_testing_codes\\example_image\\target\\*.mat' # image path for testing
-    vc.image_path = 'L:\\Regstain_Code\\code\\stage2_20220727_G&RSeperateTrain_initIter=0\\code_for_public\\Network_testing_codes\\example_image\\target\\*.mat'
 
-    def convert_inp_path_from_target(inp_path: str):
-        return inp_path.replace('target', 'input')
+    # REFACTOR: were hardcoded 'L:\\...' Windows backslash paths; now built from --data_dir and --is_mat args
+    ext = 'mat' if args.is_mat else 'png'
+    tc.image_path = os.path.join(args.data_dir, f'*.{ext}')
+    vc.image_path = tc.image_path
+
+    if args.is_mat:
+        # original behavior: .mat files with 'input'/'target' keys in sibling folders
+        def convert_inp_path_from_target(inp_path: str):
+            return inp_path.replace('target', 'input')
+    else:
+        # REFACTOR: RGB A/B folder layout for BCI/MIST-HER2 (e.g. testB/*.png → testA/*.png)
+        def convert_inp_path_from_target(inp_path: str):
+            d, f = os.path.split(inp_path)
+            parent = os.path.dirname(d)
+            folder = os.path.basename(d).replace('B', 'A')  # testB→testA
+            return os.path.join(parent, folder, f)
 
     tc.convert_inp_path_from_target = convert_inp_path_from_target
     vc.convert_inp_path_from_target = convert_inp_path_from_target
 
-    tc.is_mat, vc.is_mat = True, True  # True for .mat, False for .npy
+    # REFACTOR: was hardcoded True; now driven by --is_mat flag (default False = RGB mode)
+    tc.is_mat, vc.is_mat = args.is_mat, args.is_mat
     tc.data_inpnorm, vc.data_inpnorm = False, False  # True for normalizing input images
 
     tc.channel_start_index, vc.channel_start_index = 0, 0
     tc.channel_end_index, vc.channel_end_index = 2, 2  # exclusive
 
     tc.is_training, vc.is_training = True, False
-    tc.image_size, vc.image_size = 2048, 2048   # 1408, 1408
+    # REFACTOR: was hardcoded 2048 (for full autopsy slides); now from --image_size arg (default 256)
+    tc.image_size, vc.image_size = args.image_size, args.image_size
     tc.num_slices, vc.num_slices = 2, 2
     tc.label_channels, vc.label_channels = 3, 3
 
@@ -52,10 +90,9 @@ def init_parameters():
 
 
 if __name__ == '__main__':
-    # paths
-    model_path = 'L:/Regstain_Code/code/stage2_20220727_G&RSeperateTrain_initIter=0/code_for_public/Network_testing_codes'
-    checkpoint_path = model_path + '/model_G_iter=87700.h5'
-    output_path = 'L:/Regstain_Code/code/stage2_20220727_G&RSeperateTrain_initIter=0/code_for_public/Network_testing_codes/example_image/output/'
+    # REFACTOR: were three hardcoded 'L:/...' Windows paths; now from --checkpoint and --output_dir args
+    checkpoint_path = args.checkpoint
+    output_path = args.output_dir
     tf.io.gfile.mkdir(output_path)
 
     # initialize architecture and load weights
@@ -90,15 +127,18 @@ if __name__ == '__main__':
 
         for j in range(tc.batch_size):
             valid_output_temp = np.clip(valid_output[j], 0, 1)
-            valid_x_temp = tf.concat([valid_x[j, :, :, 0:2], valid_x[j, :, :, 3:4]], axis=-1)
+            # REFACTOR: was tf.concat([valid_x[j,:,:,0:2], valid_x[j,:,:,3:4]], axis=-1)
+            # channel index 3 does not exist for 2-channel input — simplified to use full input as-is
+            valid_x_temp = valid_x[j]
             valid_x_temp = (valid_x_temp / tf.reduce_max(valid_x_temp)).numpy()
             valid_y_temp = valid_y.numpy() * 255
             valid_y_temp = valid_y_temp[j]
             valid_image_path = test_images[i * tc.batch_size + j]
 
-            cur_out_img_name = valid_image_path.split('\\')[-1].replace('.mat', '') + '.png'
+            # REFACTOR: was valid_image_path.split('\\')[-1] — backslash split breaks on Linux
+            cur_out_img_name = os.path.splitext(os.path.basename(valid_image_path))[0] + '.png'
 
-            # with case name
-            cur_case_name = valid_image_path.split('\\')[-3]
+            # REFACTOR: was valid_image_path.split('\\')[-3] — backslash split breaks on Linux
+            cur_case_name = os.path.basename(os.path.dirname(os.path.dirname(valid_image_path)))
             plt.imsave(output_path + cur_case_name + '_' + cur_out_img_name,
                        valid_output_temp)

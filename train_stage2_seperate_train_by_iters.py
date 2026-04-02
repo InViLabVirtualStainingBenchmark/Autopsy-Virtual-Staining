@@ -1,11 +1,33 @@
 import os
+import argparse  # REFACTOR: added to replace hardcoded paths and CUDA device
 
 import numpy as np
 
 import batch_utils
 
+
+# REFACTOR: parse_args() added — was no argparse at all; all paths were hardcoded Windows drives
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train RegiStain (stage 2, separate G/D and R)')
+    parser.add_argument('--model_dir', required=True,
+                        help='Directory to save checkpoints and logs')
+    parser.add_argument('--train_data', required=True,
+                        help='Glob pattern for training target images, e.g. /data/BCI/trainB/*.png')
+    parser.add_argument('--val_data', required=True,
+                        help='Glob pattern for validation target images, e.g. /data/BCI/valB/*.png')
+    parser.add_argument('--gpu', default='0',
+                        help='CUDA_VISIBLE_DEVICES value (default: 0)')
+    parser.add_argument('--is_mat', action='store_true',
+                        help='Use .mat autofluorescence loading instead of RGB image loading')
+    return parser.parse_args()
+
+
+args = parse_args()
+
+# REFACTOR: was hardcoded os.environ["CUDA_VISIBLE_DEVICES"] = "1" at module level;
+# moved after parse_args() so --gpu arg is applied before TensorFlow reads the env var
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
 import glob, random, logging
 
@@ -22,10 +44,11 @@ from watcher import Watcher
 import ops
 import time
 
-def init_parameters():
+def init_parameters():  # REFACTOR: args are now parsed at module level and accessed via global `args`
     tc, vc = ConfigObj(), ConfigObj()
 
-    tc.model_path = 'L:/Regstain_Code/code/stage2_20220727_G&RSeperateTrain_initIter=0/' # set the path to save model
+    # REFACTOR: was hardcoded 'L:/Regstain_Code/...' Windows path; now from --model_dir arg
+    tc.model_path = args.model_dir
     tc.prev_checkpoint_path = None
     tc.save_every_epoch = True
 
@@ -36,16 +59,27 @@ def init_parameters():
     assert not (tc.prev_checkpoint_path
                 and (tc.G_warmstart_checkpoint or tc.D_warmstart_checkpoint or tc.R_warmstart_checkpoint))
 
-    tc.image_path = 'L:/Pneumonia_Dataset/Second_reg/Training/target/*.mat' # path for training data 
-    vc.image_path = 'J:/Pneumonia_Dataset/Second_reg/Validation/target/*.mat' # path for validation data
+    # REFACTOR: were hardcoded 'L:/...' and 'J:/...' Windows paths; now from --train_data / --val_data args
+    tc.image_path = args.train_data
+    vc.image_path = args.val_data
 
-    def convert_inp_path_from_target(inp_path: str):
-        return inp_path.replace('target', 'input')
+    if args.is_mat:
+        # original behavior: .mat files with 'input'/'target' keys in sibling folders
+        def convert_inp_path_from_target(inp_path: str):
+            return inp_path.replace('target', 'input')
+    else:
+        # REFACTOR: RGB A/B folder layout for BCI/MIST-HER2 (e.g. trainB/*.png → trainA/*.png)
+        def convert_inp_path_from_target(inp_path: str):
+            d, f = os.path.split(inp_path)
+            parent = os.path.dirname(d)
+            folder = os.path.basename(d).replace('B', 'A')  # trainB→trainA, testB→testA
+            return os.path.join(parent, folder, f)
 
     tc.convert_inp_path_from_target = convert_inp_path_from_target
     vc.convert_inp_path_from_target = convert_inp_path_from_target
 
-    tc.is_mat, vc.is_mat = True, True  # True for .mat, False for .npy
+    # REFACTOR: was hardcoded True; now driven by --is_mat flag (default False = RGB mode)
+    tc.is_mat, vc.is_mat = args.is_mat, args.is_mat
     tc.data_inpnorm, vc.data_inpnorm = 'norm_by_mean_std', 'norm_by_mean_std'
     tc.channel_start_index, vc.channel_start_index = 0, 0
     tc.channel_end_index, vc.channel_end_index = 2, 2  # exclusive
@@ -183,7 +217,8 @@ if __name__ == '__main__':
     tc, vc = init_parameters()
 
     tf.io.gfile.mkdir(tc.model_path)
-    tf.io.gfile.mkdir(tc.model_path + '/output')
+    # REFACTOR: was tc.model_path + '/output'; use os.path.join for cross-platform safety
+    tf.io.gfile.mkdir(os.path.join(tc.model_path, 'output'))
 
     # ======================= input pipeline =========================
 
