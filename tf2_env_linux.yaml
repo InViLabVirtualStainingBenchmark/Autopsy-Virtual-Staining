@@ -1,0 +1,50 @@
+# Linux-compatible environment derived from tf2_env.yaml.
+# Changes from original:
+#   - Removed all Windows-only packages (vc, vs2015_runtime, wincertstore, icc_rt, intel-openmp)
+#   - Removed all build strings (hashes like h2bbff1b_7) — Linux builds differ from Windows
+#   - Removed GUI packages not needed for headless use (pyqt, qt-main, qt-webengine, qtwebkit, gstreamer)
+#   - Added conda-forge channel for better Linux package availability
+#   - Added tensorflow-addons==0.13.0 (missing from original but required by batch_utils.py)
+#   - numpy pinned to 1.19.5 via pip only (required by tensorflow-gpu==2.5.0)
+name: tf2_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8.15
+  - cudatoolkit=11.3.1
+  - cudnn=8.2.1
+  - hdf5=1.12.1
+  - scipy=1.9.3
+  - matplotlib=3.6.2
+  - opencv=4.6.0
+  - scikit-learn=1.1.3
+  - tqdm=4.64.1
+  - configobj=5.0.6
+  - pillow=9.3.0
+  - pip
+  - pip:
+    - numpy==1.19.5
+    - tensorflow-gpu==2.5.0
+    - tensorflow-estimator==2.5.0
+    - tensorflow-addons==0.13.0
+    - keras-preprocessing==1.1.2
+    - keras-nightly==2.5.0.dev2021032900
+    - absl-py==0.15.0
+    - astunparse==1.6.3
+    - flatbuffers==1.12
+    - gast==0.4.0
+    - google-auth==2.16.0
+    - google-auth-oauthlib==0.4.6
+    - google-pasta==0.2.0
+    - grpcio==1.34.1
+    - h5py==3.1.0
+    - opt-einsum==3.3.0
+    - protobuf==3.20.3
+    - six==1.15.0
+    - tensorboard==2.11.0
+    - tensorboard-data-server==0.6.1
+    - termcolor==1.1.0
+    - typing-extensions==3.7.4.3
+    - wrapt==1.12.1
+    - werkzeug==2.2.2
