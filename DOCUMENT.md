@@ -37,11 +37,11 @@
 
 ## Environment Actually Used
 
-- **Python version:**
+- **Python version:** 3.8.15
 - **TensorFlow version:** 2.5.0
-- **CUDA version:**
+- **CUDA version:** 11.3.1
 - **Conda environment name:** tf2_env
-- **Date tested:**
+- **Date tested:** 2026-04-03
 - **Hardware:** RTX 4090, WSL2 on Windows 11
 
 ### GPU Confirmation
@@ -63,11 +63,16 @@
 ### Commands Run
 
 ```bash
-cd ~/thomas/internship-models/autopsy-VS
-conda env create -f tf2_env.yaml
+cd ~/internship-models/Autopsy-Virtual-Staining
+# tf2_env.yaml has Windows build strings — use the Linux-compatible version instead
+conda env create -f tf2_env_linux.yaml
 conda activate tf2_env
+# fix numpy/scipy ABI mismatch (see Issues below)
+pip install --force-reinstall scipy==1.7.3
 # verify imports
 python -c "import ops; import batch_utils; import watcher; print('imports ok')"
+# verify GPU
+python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
 ```
 
 ### Issues and Fixes
@@ -75,7 +80,9 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
 | Issue | Fix Applied |
 |-------|-------------|
 | `watcher.py` not in repo, `from watcher import Watcher` crashes on import | Created `watcher.py` stub (see Changes table below) |
-|       |             |
+| `tf2_env.yaml` uses Windows-only packages (`vc`, `vs2015_runtime`, `wincertstore`) and Windows build strings (e.g. `h2bbff1b_7`) — fails on Linux | Created `tf2_env_linux.yaml`: removed Windows packages and all build hashes, added `conda-forge` channel, added `tensorflow-addons==0.13.0` (missing from original), moved `numpy` to pip section pinned at `1.19.5` |
+| `RuntimeError: module compiled against API version 0xe but this version of numpy is 0xd` — numpy/scipy ABI mismatch at import | `scipy=1.9.3` (conda) was built against numpy 1.23.x; TF 2.5.0 requires numpy 1.19.5. Fix: `pip install --force-reinstall scipy==1.7.3` |
+| `tensorflow.python.framework.errors_impl.NotFoundError` when `tf.io.gfile.mkdir()` is called with non-existent parent directory | Replaced `tf.io.gfile.mkdir()` with `os.makedirs(path, exist_ok=True)` in `test_G.py` and `train_stage2_seperate_train_by_iters.py` |
 
 ---
 
@@ -86,18 +93,21 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
   They must be split into separate A (H&E) and B (IHC) folders before use.
 -->
 
-- **Dataset used:** BCI / MIST-HER2 / both
+- **Dataset used:** BCI
 - **Format expected by model (after refactor):** Separate A/B folders — `trainA/`, `trainB/`, `testA/`, `testB/`
 - **Conversion applied:**
   ```bash
-  # BCI images are 1024x512 side-by-side (left=H&E, right=IHC).
-  # Split them with:
+  # BCI images are side-by-side JPEG pairs (left=H&E, right=IHC).
+  # For smoke test, reused the already-split dataset from the CUT repo:
+  #   ../contrastive-unpaired-translation/datasets/BCI_dataset/BCI_dataset/
+  # No additional conversion needed — trainA/trainB/testA/testB already exist.
+
+  # If starting from raw BCI download, split with:
   python - << 'EOF'
   import os, glob
   from PIL import Image
-
   for split in ['train', 'test']:
-      src = f'~/thomas/internship-models/dataset/BCI/{split}/'
+      src = f'~/BCI/{split}/'
       os.makedirs(f'{src}A', exist_ok=True)
       os.makedirs(f'{src}B', exist_ok=True)
       for p in glob.glob(f'{src}*.jpg'):
@@ -109,15 +119,13 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
   ```
 - **Final folder layout used:**
   ```
-  dataset/BCI/
-    train/
-      A/   <-- H&E source images (1024x512 each half → 512x512)
-      B/   <-- IHC target images
-    test/
-      A/
-      B/
+  contrastive-unpaired-translation/datasets/BCI_dataset/BCI_dataset/
+    trainA/   <-- H&E source images
+    trainB/   <-- IHC target images
+    testA/
+    testB/
   ```
-- **Number of images used for smoke test (train / test):**
+- **Number of images used for smoke test (train / test):** (fill in)
 
 ---
 
@@ -135,12 +143,12 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
 - **Script / command run:**
   ```bash
   conda activate tf2_env
-  cd ~/thomas/internship-models/autopsy-VS
+  cd ~/internship-models/Autopsy-Virtual-Staining
   python test_G.py \
-    --data_dir ~/thomas/internship-models/dataset/BCI/test/B/ \
+    --data_dir ../contrastive-unpaired-translation/datasets/BCI_dataset/BCI_dataset/testB/ \
     --checkpoint pretrained/model_G_iter=87700.h5 \
-    --output_dir ~/thomas/internship-models/autopsy-VS-outputs/ \
-    --image_size 256 \
+    --output_dir ../autopsy-VS-outputs/BCI-pretrained/ \
+    --image_size 512 \
     --gpu 0
   ```
 - **Output folder:**
@@ -157,11 +165,11 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
 - **Script / command run:**
   ```bash
   conda activate tf2_env
-  cd ~/thomas/internship-models/autopsy-VS
+  cd ~/internship-models/Autopsy-Virtual-Staining
   python train_stage2_seperate_train_by_iters.py \
-    --model_dir ~/thomas/internship-models/autopsy-VS-train/ \
-    --train_data ~/thomas/internship-models/dataset/BCI/train/B/*.png \
-    --val_data ~/thomas/internship-models/dataset/BCI/test/B/*.png \
+    --model_dir ../autopsy-VS-train/ \
+    --train_data "../contrastive-unpaired-translation/datasets/BCI_dataset/BCI_dataset/trainB/*.jpg" \
+    --val_data "../contrastive-unpaired-translation/datasets/BCI_dataset/BCI_dataset/testB/*.jpg" \
     --gpu 0
   ```
   Note: For a 2-epoch smoke test, temporarily set `tc.N_epoch = 2` in `init_parameters()`
@@ -193,6 +201,7 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
 | File | Change Description | Reason |
 |------|--------------------|--------|
 | `watcher.py` | Created new file — minimal no-op stub for `Watcher` class | File was not committed to the original repo; `from watcher import Watcher` crashes training script on import |
+| `tf2_env_linux.yaml` | Created new file — Linux-compatible environment derived from `tf2_env.yaml` | Original yaml contains Windows-only conda packages (`vc`, `vs2015_runtime`, `wincertstore`) and Windows build hashes that are unavailable on Linux; also adds missing `tensorflow-addons==0.13.0` |
 | `ops.py` | Added `import os`; replaced `model_path + 'code'` (×4) with `os.path.join(model_path, 'code')` | String concatenation without separator gives wrong paths when model_path lacks trailing slash |
 | `train_stage2_seperate_train_by_iters.py` | Added `import argparse` and `parse_args()` function | No CLI args existed; all paths were hardcoded Windows drive letters |
 | `train_stage2_seperate_train_by_iters.py` | Replaced hardcoded `tc.model_path = 'L:/...'` with `args.model_dir` | Hardcoded Windows path |
@@ -200,7 +209,7 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
 | `train_stage2_seperate_train_by_iters.py` | Replaced hardcoded `vc.image_path = 'J:/.../*.mat'` with `args.val_data` | Hardcoded Windows path on different drive |
 | `train_stage2_seperate_train_by_iters.py` | Replaced hardcoded `CUDA_VISIBLE_DEVICES = "1"` with `args.gpu`; moved after `parse_args()` | Hardcoded GPU index; env var must be set before TF import |
 | `train_stage2_seperate_train_by_iters.py` | `is_mat` now set from `args.is_mat` (default False); added conditional `convert_inp_path_from_target` for A/B folder layout | `.mat` was hardcoded; BCI/MIST-HER2 use PNG in A/B folders |
-| `train_stage2_seperate_train_by_iters.py` | `tf.io.gfile.mkdir(tc.model_path + '/output')` → `os.path.join(tc.model_path, 'output')` | Cross-platform path safety |
+| `train_stage2_seperate_train_by_iters.py` | `tf.io.gfile.mkdir(tc.model_path + '/output')` → `os.makedirs(os.path.join(tc.model_path, 'output'), exist_ok=True)` | `tf.io.gfile.mkdir` raises `NotFoundError` if parent directory does not exist; also fixed string concatenation to use `os.path.join` |
 | `test_G.py` | Added `import argparse` and `parse_args()` function | No CLI args existed |
 | `test_G.py` | Replaced hardcoded `L:\\...\\*.mat` image path with `os.path.join(args.data_dir, '*.{ext}')` | Hardcoded Windows backslash path |
 | `test_G.py` | Replaced hardcoded `model_path`, `checkpoint_path`, `output_path` Windows strings with `args.checkpoint`, `args.output_dir` | Hardcoded Windows paths |
@@ -210,6 +219,7 @@ python -c "import ops; import batch_utils; import watcher; print('imports ok')"
 | `test_G.py` | `valid_image_path.split('\\')[-1]` → `os.path.splitext(os.path.basename(valid_image_path))[0] + '.png'` | Backslash split breaks on Linux |
 | `test_G.py` | `valid_image_path.split('\\')[-3]` → `os.path.basename(os.path.dirname(os.path.dirname(...)))` | Backslash split breaks on Linux |
 | `test_G.py` | `tf.concat([valid_x[j,:,:,0:2], valid_x[j,:,:,3:4]], ...)` → `valid_x[j]` | Channel index 3 does not exist for 2-channel input (visualization-only code) |
+| `test_G.py` | `tf.io.gfile.mkdir(output_path)` → `os.makedirs(output_path, exist_ok=True)` | `tf.io.gfile.mkdir` raises `NotFoundError` if parent directory does not exist |
 | `batch_utils.py` | Added `import cv2` | Needed for RGB image loading |
 | `batch_utils.py` | `ImageTransformationBatchLoader`: replaced `np.load()` else-branch with `cv2.imread()` + `/255.0` | BCI/MIST-HER2 are RGB images, not `.npy` arrays |
 | `batch_utils.py` | `ImageTransformationBatchLoader_Testing`: same replacement | Same reason |

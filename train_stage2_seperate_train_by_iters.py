@@ -216,9 +216,8 @@ if __name__ == '__main__':
     wtr = Watcher()
     tc, vc = init_parameters()
 
-    tf.io.gfile.mkdir(tc.model_path)
-    # REFACTOR: was tc.model_path + '/output'; use os.path.join for cross-platform safety
-    tf.io.gfile.mkdir(os.path.join(tc.model_path, 'output'))
+    # REFACTOR: was tf.io.gfile.mkdir() — does not create parent dirs, raises NotFoundError
+    os.makedirs(os.path.join(tc.model_path, 'output'), exist_ok=True)
 
     # ======================= input pipeline =========================
 

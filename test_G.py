@@ -93,7 +93,8 @@ if __name__ == '__main__':
     # REFACTOR: were three hardcoded 'L:/...' Windows paths; now from --checkpoint and --output_dir args
     checkpoint_path = args.checkpoint
     output_path = args.output_dir
-    tf.io.gfile.mkdir(output_path)
+    # REFACTOR: was tf.io.gfile.mkdir() — does not create parent dirs, raises NotFoundError
+    os.makedirs(output_path, exist_ok=True)
 
     # initialize architecture and load weights
     tc, vc = init_parameters()
