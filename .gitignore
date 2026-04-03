@@ -1,2 +1,6 @@
 .idea
 __pycache__
+smoke_data/
+smoke_data_mist/
+outputs
+smoke_gt/
