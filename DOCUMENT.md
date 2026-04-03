@@ -171,10 +171,10 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 
 ### Evaluation Results (pretrained weights — domain mismatch expected)
 
-| Dataset | PSNR | SSIM | LPIPS (Alex) | FID | MAE | Pairs |
-|---------|------|------|--------------|-----|-----|-------|
-| BCI | 12.42 | 0.159 | 0.754 | 372.1 | 0.202 | 50 |
-| MIST-HER2 | 12.70 | 0.150 | 0.716 | 297.4 | 0.189 | 50 |
+| Dataset   | PSNR  | SSIM  | LPIPS (Alex) | FID        | MAE   | Pairs |
+|-----------|-------|-------|--------------|------------|-------|-------|
+| BCI       | 12.42 | 0.159 | 0.754        | 372.1      | 0.202 | 50    |
+| MIST-HER2 | 12.70 | 0.150 | 0.716        | 297well .4 | 0.189 | 50    |
 
 Note: all metrics are poor because pretrained weights were trained on autofluorescence→H&E; we are running H&E→IHC. This is the expected domain-mismatch baseline. Metrics after training from scratch will be the meaningful numbers.
 
@@ -194,25 +194,37 @@ Note: all metrics are poor because pretrained weights were trained on autofluore
   ```
   Note: For a 2-epoch smoke test, temporarily set `tc.N_epoch = 2` in `init_parameters()`
   before running (or wait for `--epochs` arg to be added).
-- **Dataset used:**
-- **Epochs run:**
+- **Dataset used:** BCI (2332 train images, 977 val images)
+- **Epochs run:** 2
 - **Batch size:** 4 (default)
-- **Input resolution:** 256x256 patches (extracted from full images)
-- **Time per epoch (approx):**
-- **Peak GPU memory (approx, from nvidia-smi):**
-- **Checkpoint saved:** yes / no
-- **Checkpoint path:**
-- **Crash or error during training:**
+- **Input resolution:** 256×256 patches extracted from 1024×1024 images
+- **Steps per epoch:** 500 (min floor in training loop overrides --steps_per_epoch 50)
+- **Time per epoch (approx):** ~70 min (G/D: 58 min, R: 10 min, validation: 2 min)
+- **Peak GPU memory (approx, from nvidia-smi):** 21306 MB allocated by TF
+- **Checkpoint saved:** yes
+- **Checkpoint path:** `outputs/training-smoke/model_G_round=1.h5` (also iter-based: model_G_iter=850/950.h5)
+- **Crash or error during training:** none — `GeneratorDataset iterator` warnings at exit are harmless TF cleanup noise
+- **Training loss progression:** L1 loss 5.47 → 0.50; PSNR 8.43 → 18.30 dB; D real/fake converged to ~0.25/0.25 (balanced)
+
+---
+
+### Evaluation Results (training checkpoint — 2 epochs on BCI)
+
+| Dataset | PSNR | SSIM | LPIPS (Alex) | FID | MAE | Pairs |
+|---------|------|------|--------------|-----|-----|-------|
+| BCI | 16.32 | 0.586 | 0.593 | 355.8 | 0.142 | 50 |
+
+All metrics improved over the pretrained-weights baseline after just 2 epochs. SSIM: 0.159 → 0.586. Full training (150 epochs) expected to produce substantially better results.
 
 ---
 
 ## Output Verification
 
-- **Output folder:**
-- **Example output filenames:**
-- **Dimensions match input:** yes / no
-- **Visual sanity check:**
-- **Any obvious artifacts or failure modes:**
+- **Output folder:** `outputs/training-checkpoint-smoke/`
+- **Example output filenames:** `smoke_data_*.png` (1024×1024 PNG)
+- **Dimensions match input:** yes
+- **Visual sanity check:** beige/light background with darker cellular structures and more colorful spots inside — early IHC-like staining pattern emerging. Clearly different from pretrained model output (pink H&E-like). Not yet crisp IHC DAB signal — expected at 2 epochs, full training needed.
+- **Any obvious artifacts or failure modes:** none observed at 2 epochs
 
 ---
 
