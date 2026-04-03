@@ -12,9 +12,12 @@ def parse_args():
     parser.add_argument('--model_dir', required=True,
                         help='Directory to save checkpoints and logs')
     parser.add_argument('--train_data', required=True,
-                        help='Glob pattern for training target images, e.g. /data/BCI/trainB/*.png')
+                        help='Directory containing training target images, e.g. /data/BCI/trainB/')
     parser.add_argument('--val_data', required=True,
-                        help='Glob pattern for validation target images, e.g. /data/BCI/valB/*.png')
+                        help='Directory containing validation target images, e.g. /data/BCI/testB/')
+    # REFACTOR: added --ext to support jpg datasets (e.g. MIST-HER2); default png covers BCI
+    parser.add_argument('--ext', default='png',
+                        help='Image file extension (default: png; use jpg for MIST-HER2)')
     parser.add_argument('--gpu', default='0',
                         help='CUDA_VISIBLE_DEVICES value (default: 0)')
     parser.add_argument('--is_mat', action='store_true',
@@ -26,6 +29,9 @@ def parse_args():
                         help='G/D and R steps per epoch (default: 6000; use 50 for smoke test)')
     parser.add_argument('--valid_steps', type=int, default=100,
                         help='Validate every N G/D steps (default: 100; use 25 for smoke test)')
+    # REFACTOR: epoch_begin was hardcoded to 79 (original researcher resume point); now a CLI arg
+    parser.add_argument('--epoch_begin', type=int, default=0,
+                        help='Epoch to resume training from (default: 0 for fresh training)')
     return parser.parse_args()
 
 
@@ -67,8 +73,10 @@ def init_parameters():  # REFACTOR: args are now parsed at module level and acce
                 and (tc.G_warmstart_checkpoint or tc.D_warmstart_checkpoint or tc.R_warmstart_checkpoint))
 
     # REFACTOR: were hardcoded 'L:/...' and 'J:/...' Windows paths; now from --train_data / --val_data args
-    tc.image_path = args.train_data
-    vc.image_path = args.val_data
+    # REFACTOR: glob built inside Python (not shell) to prevent shell expansion of * eating the wildcard
+    ext = 'mat' if args.is_mat else args.ext
+    tc.image_path = os.path.join(args.train_data, f'*.{ext}')
+    vc.image_path = os.path.join(args.val_data, f'*.{ext}')
 
     if args.is_mat:
         # original behavior: .mat files with 'input'/'target' keys in sibling folders
@@ -145,10 +153,9 @@ def init_parameters():  # REFACTOR: args are now parsed at module level and acce
     tc.loss_mask, vc.loss_mask = False, False  # True, False
 
     # training resume parameters
-    tc.epoch_begin = 79
-    # this overrides tc.epoch_  begin the training schedule; tc.epoch_begin is required for logging
-    # set it to None when not used
-    tc.iter_begin =  None
+    # REFACTOR: was hardcoded 79 (original researcher's resume epoch); now from --epoch_begin arg (default 0)
+    tc.epoch_begin = args.epoch_begin
+    tc.iter_begin = None
 
     return tc, vc
 
