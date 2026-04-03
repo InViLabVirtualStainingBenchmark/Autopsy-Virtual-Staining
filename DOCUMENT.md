@@ -143,7 +143,8 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 
 - **Download source URL:** https://doi.org/10.5281/zenodo.10203424
 - **Host stability:** stable (Zenodo)
-- **Weights placed at (relative path):** `pretrained/model_G_iter=87700.h5`
+- **Weights placed at (relative path):** `
+- pretrained/model_G_iter=87700.h5`
 - **Size on disk:** (fill in after download)
 
 ---
@@ -167,6 +168,15 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 - **Visual check result:** outputs show colorful pink/purple staining — pipeline confirmed working. Note: pretrained weights were trained on autofluorescence→H&E (not H&E→IHC), so outputs are H&E-like rather than IHC brown DAB — domain mismatch is expected with these weights
 - **Time to run (approx):** ~10 min for 50 images (includes CUDA JIT warm-up for first ~10 images; TF 2.5 has no precompiled kernels for RTX 4090 sm_89 — driver JIT fallback is used)
 - **Errors or warnings during inference:** `ptxas not found` / `Relying on driver to perform ptx compilation` — harmless warning, driver JIT used as fallback. `LD_LIBRARY_PATH=/usr/lib/wsl/lib` required (WSL2 libcuda.so fix)
+
+### Evaluation Results (pretrained weights — domain mismatch expected)
+
+| Dataset | PSNR | SSIM | LPIPS (Alex) | FID | MAE | Pairs |
+|---------|------|------|--------------|-----|-----|-------|
+| BCI | 12.42 | 0.159 | 0.754 | 372.1 | 0.202 | 50 |
+| MIST-HER2 | 12.70 | 0.150 | 0.716 | 297.4 | 0.189 | 50 |
+
+Note: all metrics are poor because pretrained weights were trained on autofluorescence→H&E; we are running H&E→IHC. This is the expected domain-mismatch baseline. Metrics after training from scratch will be the meaningful numbers.
 
 ---
 
@@ -220,6 +230,7 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 | `train_stage2_seperate_train_by_iters.py` | Replaced hardcoded `CUDA_VISIBLE_DEVICES = "1"` with `args.gpu`; moved after `parse_args()` | Hardcoded GPU index; env var must be set before TF import |
 | `train_stage2_seperate_train_by_iters.py` | `is_mat` now set from `args.is_mat` (default False); added conditional `convert_inp_path_from_target` for A/B folder layout | `.mat` was hardcoded; BCI/MIST-HER2 use PNG in A/B folders |
 | `train_stage2_seperate_train_by_iters.py` | `tf.io.gfile.mkdir(tc.model_path + '/output')` → `os.makedirs(os.path.join(tc.model_path, 'output'), exist_ok=True)` | `tf.io.gfile.mkdir` raises `NotFoundError` if parent directory does not exist; also fixed string concatenation to use `os.path.join` |
+| `train_stage2_seperate_train_by_iters.py` | Added `--epochs` (default 150), `--steps_per_epoch` (default 6000), `--valid_steps` (default 100) args; wired into `init_parameters()` replacing hardcoded values | Enables smoke test and full training from same script without source edits |
 | `test_G.py` | Added `import argparse` and `parse_args()` function | No CLI args existed |
 | `test_G.py` | Replaced hardcoded `L:\\...\\*.mat` image path with `os.path.join(args.data_dir, '*.{ext}')` | Hardcoded Windows backslash path |
 | `test_G.py` | Replaced hardcoded `model_path`, `checkpoint_path`, `output_path` Windows strings with `args.checkpoint`, `args.output_dir` | Hardcoded Windows paths |

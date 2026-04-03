@@ -19,6 +19,13 @@ def parse_args():
                         help='CUDA_VISIBLE_DEVICES value (default: 0)')
     parser.add_argument('--is_mat', action='store_true',
                         help='Use .mat autofluorescence loading instead of RGB image loading')
+    # REFACTOR: added training control args so smoke test and full training use same script
+    parser.add_argument('--epochs', type=int, default=150,
+                        help='Number of training epochs (default: 150; use 2 for smoke test)')
+    parser.add_argument('--steps_per_epoch', type=int, default=6000,
+                        help='G/D and R steps per epoch (default: 6000; use 50 for smoke test)')
+    parser.add_argument('--valid_steps', type=int, default=100,
+                        help='Validate every N G/D steps (default: 100; use 25 for smoke test)')
     return parser.parse_args()
 
 
@@ -107,11 +114,12 @@ def init_parameters():  # REFACTOR: args are now parsed at module level and acce
     # training params
     tc.batch_size, vc.batch_size = 4, 4
     tc.n_shuffle_epoch, vc.n_shuffle_epoch = 500, 5000  # for the batchloader
-    tc.initial_alternate_steps = 6000  # train G/D for initial_alternate_steps steps before switching to R for the same # of steps
-    tc.valid_steps = 100  # perform validation when D_steps % valid_steps == 0 or at the end of a loop of (train G/D, train R)
+    # REFACTOR: was hardcoded 6000/100/150; now from CLI args so smoke test and full training share same script
+    tc.initial_alternate_steps = args.steps_per_epoch
+    tc.valid_steps = args.valid_steps
     tc.n_threads, vc.n_threads = 2, 2
     tc.q_limit, vc.q_limit = 100, 300
-    tc.N_epoch = 150  # number of loops
+    tc.N_epoch = args.epochs
 
     tc.tol = 0  # current early stopping patience
     tc.max_tol = 2  # the max-allowed early stopping patience
