@@ -19,6 +19,9 @@ def parse_args():
                         help='Spatial size of input images in pixels (default: 256; original autopsy slides used 2048)')
     parser.add_argument('--is_mat', action='store_true',
                         help='Use .mat autofluorescence loading instead of RGB image loading')
+    # REFACTOR: added --ext to support .jpg datasets (e.g. MIST-HER2); default png covers BCI
+    parser.add_argument('--ext', default='png',
+                        help='Image file extension for RGB mode (default: png; use jpg for MIST-HER2)')
     return parser.parse_args()
 
 
@@ -44,7 +47,8 @@ def init_parameters():
     tc, vc = ConfigObj(), ConfigObj()
 
     # REFACTOR: were hardcoded 'L:\\...' Windows backslash paths; now built from --data_dir and --is_mat args
-    ext = 'mat' if args.is_mat else 'png'
+    # REFACTOR: was hardcoded 'png'; now uses --ext arg so jpg datasets (e.g. MIST-HER2) work too
+    ext = 'mat' if args.is_mat else args.ext
     tc.image_path = os.path.join(args.data_dir, f'*.{ext}')
     vc.image_path = tc.image_path
 

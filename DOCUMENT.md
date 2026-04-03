@@ -53,7 +53,8 @@
 -->
 
 ```
-# paste output here
+[PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+# RTX 4090 detected, 21306 MB VRAM allocated by TensorFlow
 ```
 
 ---
@@ -83,6 +84,7 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 | `tf2_env.yaml` uses Windows-only packages (`vc`, `vs2015_runtime`, `wincertstore`) and Windows build strings (e.g. `h2bbff1b_7`) — fails on Linux | Created `tf2_env_linux.yaml`: removed Windows packages and all build hashes, added `conda-forge` channel, added `tensorflow-addons==0.13.0` (missing from original), moved `numpy` to pip section pinned at `1.19.5` |
 | `RuntimeError: module compiled against API version 0xe but this version of numpy is 0xd` — numpy/scipy ABI mismatch at import | `scipy=1.9.3` (conda) was built against numpy 1.23.x; TF 2.5.0 requires numpy 1.19.5. Fix: `pip install --force-reinstall scipy==1.7.3` |
 | `tensorflow.python.framework.errors_impl.NotFoundError` when `tf.io.gfile.mkdir()` is called with non-existent parent directory | Replaced `tf.io.gfile.mkdir()` with `os.makedirs(path, exist_ok=True)` in `test_G.py` and `train_stage2_seperate_train_by_iters.py` |
+| `Could not load library libcudnn_cnn_infer.so.8 ... libcuda.so: cannot open shared object file` on first forward pass (WSL2) | `libcuda.so` (CUDA driver stub) lives at `/usr/lib/wsl/lib/` in WSL2 and is not in the default library path. Fix: `export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH`; made permanent via `tf2_env` conda activation script at `~/miniconda3/envs/tf2_env/etc/conda/activate.d/wsl_cuda.sh` |
 
 ---
 
@@ -120,12 +122,20 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 - **Final folder layout used:**
   ```
   contrastive-unpaired-translation/datasets/BCI_dataset/BCI_dataset/
-    trainA/   <-- H&E source images
-    trainB/   <-- IHC target images
-    testA/
-    testB/
+    trainA/   <-- H&E source images (1024x1024)
+    trainB/   <-- IHC target images (1024x1024)
+    testA/    <-- 977 images
+    testB/    <-- 977 images
+
+  contrastive-unpaired-translation/datasets/MIST/HER2-004/TrainValAB/
+    trainA/   <-- H&E source images (1024x1024)
+    trainB/   <-- IHC target images (1024x1024)
+    testA/    <-- 1000 images
+    testB/    <-- 1000 images
+    valA/
+    valB/
   ```
-- **Number of images used for smoke test (train / test):** (fill in)
+- **Number of images used for smoke test (train / test):** BCI: 977 test / full train; MIST: 1000 test / full train
 
 ---
 
@@ -151,12 +161,12 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
     --image_size 512 \
     --gpu 0
   ```
-- **Output folder:**
-- **Number of output images produced:**
-- **Output image dimensions:**
-- **Visual check result:**
-- **Time to run (approx):**
-- **Errors or warnings during inference:**
+- **Output folder:** `outputs/BCI-pretrained-smoke/`
+- **Number of output images produced:** 50
+- **Output image dimensions:** 1024×1024
+- **Visual check result:** outputs show colorful pink/purple staining — pipeline confirmed working. Note: pretrained weights were trained on autofluorescence→H&E (not H&E→IHC), so outputs are H&E-like rather than IHC brown DAB — domain mismatch is expected with these weights
+- **Time to run (approx):** ~10 min for 50 images (includes CUDA JIT warm-up for first ~10 images; TF 2.5 has no precompiled kernels for RTX 4090 sm_89 — driver JIT fallback is used)
+- **Errors or warnings during inference:** `ptxas not found` / `Relying on driver to perform ptx compilation` — harmless warning, driver JIT used as fallback. `LD_LIBRARY_PATH=/usr/lib/wsl/lib` required (WSL2 libcuda.so fix)
 
 ---
 
@@ -220,6 +230,7 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 | `test_G.py` | `valid_image_path.split('\\')[-3]` → `os.path.basename(os.path.dirname(os.path.dirname(...)))` | Backslash split breaks on Linux |
 | `test_G.py` | `tf.concat([valid_x[j,:,:,0:2], valid_x[j,:,:,3:4]], ...)` → `valid_x[j]` | Channel index 3 does not exist for 2-channel input (visualization-only code) |
 | `test_G.py` | `tf.io.gfile.mkdir(output_path)` → `os.makedirs(output_path, exist_ok=True)` | `tf.io.gfile.mkdir` raises `NotFoundError` if parent directory does not exist |
+| `test_G.py` | Added `--ext` argument (default `png`); `ext = 'mat' if args.is_mat else args.ext` | Glob pattern was hardcoded to `*.png`; MIST-HER2 images are `.jpg` so the file list was empty |
 | `batch_utils.py` | Added `import cv2` | Needed for RGB image loading |
 | `batch_utils.py` | `ImageTransformationBatchLoader`: replaced `np.load()` else-branch with `cv2.imread()` + `/255.0` | BCI/MIST-HER2 are RGB images, not `.npy` arrays |
 | `batch_utils.py` | `ImageTransformationBatchLoader_Testing`: same replacement | Same reason |
